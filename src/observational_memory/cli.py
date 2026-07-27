@@ -918,6 +918,9 @@ def _maybe_run_reflector_catchup(config: Config) -> None:
     """Run the reflector when daily reflections have fallen behind observations."""
     from .reflect import reflector_catchup_needed, run_reflector
 
+    if not config.reflector_catchup_enabled:
+        return
+
     if not reflector_catchup_needed(config):
         return
 
@@ -3407,6 +3410,7 @@ _SUPPORTED_PROVIDERS = (
     "openai",
     "anthropic-vertex",
     "anthropic-bedrock",
+    "codex-cli",
     "openai-chatgpt",
     "xai-oauth",
     "xai",

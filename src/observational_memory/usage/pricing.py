@@ -11,7 +11,7 @@ from .models import CostEstimate
 
 # Providers whose calls are paid for by a flat subscription, so marginal
 # per-token cost is $0.00 (tokens are still recorded for observability).
-SUBSCRIPTION_PROVIDERS = frozenset({"openai-chatgpt", "xai-oauth"})
+SUBSCRIPTION_PROVIDERS = frozenset({"codex-cli", "openai-chatgpt", "xai-oauth"})
 
 
 @dataclass

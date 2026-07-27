@@ -24,19 +24,37 @@ Environment variables already set in your shell win over values in the file.
 
 If you already pay for ChatGPT Plus / Pro / Team / Enterprise or for SuperGrok, you can point `om` at that subscription instead of an API key. Observations and reflections then ride on a plan you already paid for, with no per-token meter.
 
-| Provider           | Auth                       | Default model       | Marginal cost per call |
-|--------------------|----------------------------|---------------------|------------------------|
-| `openai-chatgpt`   | ChatGPT subscription OAuth | `gpt-5.5`           | $0 (your plan)         |
-| `xai-oauth`        | SuperGrok OAuth (PKCE)     | `grok-4.3`          | $0 (your plan)         |
-| `xai`              | `XAI_API_KEY`              | `grok-4.3`          | Metered                |
-| `openai`           | `OPENAI_API_KEY`           | `gpt-4o-mini`       | Metered                |
-| `anthropic`        | `ANTHROPIC_API_KEY`        | `claude-sonnet-4-5` | Metered                |
+| Provider         | Auth                       | Default model           | Marginal cost per call |
+| ---------------- | -------------------------- | ----------------------- | ---------------------- |
+| `codex-cli`      | Existing `codex login`     | `gpt-5.3-codex-spark`   | $0 (your plan)         |
+| `openai-chatgpt` | ChatGPT subscription OAuth | `gpt-5.5`               | $0 (your plan)         |
+| `xai-oauth`      | SuperGrok OAuth (PKCE)     | `grok-4.3`              | $0 (your plan)         |
+| `xai`            | `XAI_API_KEY`              | `grok-4.3`              | Metered                |
+| `openai`         | `OPENAI_API_KEY`           | `gpt-4o-mini`           | Metered                |
+| `anthropic`      | `ANTHROPIC_API_KEY`        | `claude-sonnet-4-5`     | Metered                |
 
 To sign in, run `om login` and pick your provider. Tokens land in `~/.config/observational-memory/auth.json` (0600, host-local). `om` never writes back to `~/.codex/` or `~/.grok/`; if you already have those CLIs, run `om login --import` to copy their tokens into om's own store.
 
 `om auth status` shows what is currently configured (tokens are redacted to the last 4 characters). `om auth refresh` forces a refresh now. `om logout [provider]` clears stored tokens.
 
 ## Provider Settings
+
+Local Codex CLI with an existing ChatGPT login:
+
+```bash
+OM_MEMORY_DIR=~/Documents/obsidian/observation
+OM_LLM_OBSERVER_PROVIDER=codex-cli
+OM_LLM_OBSERVER_MODEL=gpt-5.3-codex-spark
+OM_CODEX_CLI_REASONING_EFFORT=low
+OM_REFLECTOR_CATCHUP_ENABLED=0
+```
+
+This provider runs an isolated `codex exec --ephemeral` process. It disables
+hooks, memories, project rules, and write access for the worker, then reads only
+the observer prompt supplied by `om`. It does not copy OAuth tokens or require
+an API key. Run `codex login status` before using it. The last setting keeps an
+observation-only setup from automatically running the reflector; omit it to
+retain the default daily reflection catch-up.
 
 Direct Anthropic:
 
@@ -339,7 +357,13 @@ Windows default:
 %LOCALAPPDATA%\observational-memory\
 ```
 
-Override with XDG paths:
+Override the memory directory directly:
+
+```bash
+export OM_MEMORY_DIR=~/Documents/obsidian/observation
+```
+
+Or override the base XDG paths:
 
 ```bash
 export XDG_DATA_HOME=~/my-data

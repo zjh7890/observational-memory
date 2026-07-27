@@ -37,9 +37,10 @@ class CostEstimate:
     """Estimated USD cost for a call.
 
     ``source`` is one of ``builtin`` | ``override`` | ``subscription`` | ``unknown``.
-    Subscription-backed providers (``openai-chatgpt``, ``xai-oauth``) always cost
-    ``0.0`` with source ``subscription``. ``unknown`` means we recorded the tokens
-    but had no price for the model, so the USD columns stay ``None``.
+    Subscription-backed providers (``codex-cli``, ``openai-chatgpt``,
+    ``xai-oauth``) always cost ``0.0`` with source ``subscription``.
+    ``unknown`` means we recorded the tokens but had no price for the model, so
+    the USD columns stay ``None``.
     """
 
     input_usd: float | None = None

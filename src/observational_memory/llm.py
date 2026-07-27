@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import random
+import subprocess
 import sys
+import tempfile
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .config import Config, _env_flag
@@ -54,6 +58,7 @@ def compress(
         "openai": _call_openai_direct,
         "anthropic-vertex": _call_anthropic_vertex,
         "anthropic-bedrock": _call_anthropic_bedrock,
+        "codex-cli": _call_codex_cli,
         "openai-chatgpt": _call_openai_chatgpt,
         "xai-oauth": _call_xai_oauth,
         "xai": _call_xai_api_key,
@@ -71,13 +76,18 @@ def compress(
     # ChatGPT Codex reasoning effort is per-operation; resolve it here (compress
     # knows the operation) and pass it only to that path so other provider
     # signatures (and their test fakes) are unaffected.
-    reasoning_effort = config.resolve_reasoning_effort(operation) if effective_provider == "openai-chatgpt" else None
+    if effective_provider == "openai-chatgpt":
+        reasoning_effort = config.resolve_reasoning_effort(operation)
+    elif effective_provider == "codex-cli":
+        reasoning_effort = _codex_cli_reasoning_effort(config.codex_cli_reasoning_effort)
+    else:
+        reasoning_effort = None
 
     last_error: Exception | None = None
     started = time.monotonic()
     for attempt in range(_MAX_RETRIES + 1):
         try:
-            if effective_provider == "openai-chatgpt":
+            if effective_provider in {"codex-cli", "openai-chatgpt"}:
                 result = fn(system_prompt, user_content, model, max_tokens, config, reasoning_effort=reasoning_effort)
             else:
                 result = fn(system_prompt, user_content, model, max_tokens, config)
@@ -312,7 +322,7 @@ def _infer_provider(model: str, default_provider: str, *, auth_file=None) -> str
     """
     import os as _os
 
-    if default_provider in ("openai-chatgpt", "xai-oauth"):
+    if default_provider in ("codex-cli", "openai-chatgpt", "xai-oauth"):
         return default_provider
 
     normalized = model.lower()
@@ -450,6 +460,107 @@ def _call_openai_direct(
         **build_openai_chat_request(model, system_prompt, user_content, max_tokens)
     )
     return _parse_openai_chat_text(response), _openai_usage(response)
+
+
+def _codex_cli_reasoning_effort(value: str | None) -> str:
+    effort = (value or "").strip().lower()
+    return effort if effort in {"low", "medium", "high", "xhigh"} else "low"
+
+
+def _codex_cli_usage(stdout: str) -> "LLMUsage | None":
+    from .usage.models import LLMUsage
+
+    for line in reversed(stdout.splitlines()):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "turn.completed" or not isinstance(event.get("usage"), dict):
+            continue
+        usage = event["usage"]
+        prompt_tokens = usage.get("input_tokens")
+        completion_tokens = usage.get("output_tokens")
+        return LLMUsage(
+            prompt_tokens=prompt_tokens if isinstance(prompt_tokens, int) else None,
+            completion_tokens=completion_tokens if isinstance(completion_tokens, int) else None,
+            total_tokens=(
+                prompt_tokens + completion_tokens
+                if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int)
+                else None
+            ),
+            token_source="provider",
+        )
+    return None
+
+
+def _call_codex_cli(
+    system_prompt: str,
+    user_content: str,
+    model: str,
+    max_tokens: int,
+    config: Config,
+    reasoning_effort: str | None = None,
+) -> tuple[str, "LLMUsage | None"]:
+    """Run one isolated Codex CLI turn using the existing ChatGPT login."""
+    del max_tokens  # codex exec does not expose a stable output-token flag.
+    prompt = (
+        f"Do not inspect files or use tools. Work only from the supplied text.\n\n{system_prompt}\n\n{user_content}"
+    )
+    with tempfile.TemporaryDirectory(prefix="om-codex-cli-") as temp_dir:
+        output_path = Path(temp_dir) / "final.txt"
+        command = [
+            config.codex_cli_command,
+            "exec",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--disable",
+            "hooks",
+            "--disable",
+            "memories",
+            "--disable",
+            "multi_agent",
+            "--sandbox",
+            "read-only",
+            "-c",
+            'approval_policy="never"',
+            "-c",
+            f'model_reasoning_effort="{_codex_cli_reasoning_effort(reasoning_effort)}"',
+            "-c",
+            'model_verbosity="low"',
+            "--model",
+            model,
+            "--skip-git-repo-check",
+            "--color",
+            "never",
+            "--json",
+            "--cd",
+            temp_dir,
+            "--output-last-message",
+            str(output_path),
+            "-",
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                input=prompt,
+                text=True,
+                capture_output=True,
+                timeout=config.codex_cli_timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"Codex CLI timed out after {config.codex_cli_timeout_seconds:g}s.") from exc
+
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "no diagnostic output").strip()[-4000:]
+            raise RuntimeError(f"Codex CLI exited with status {result.returncode}: {detail}")
+        if not output_path.is_file():
+            raise RuntimeError("Codex CLI completed without writing its final response.")
+        text = output_path.read_text(encoding="utf-8").strip()
+        if not text:
+            raise RuntimeError("Codex CLI returned an empty final response.")
+        return text, _codex_cli_usage(result.stdout)
 
 
 def _openai_token_limit_arg(model: str, max_tokens: int) -> dict[str, int]:

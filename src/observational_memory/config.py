@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,6 +55,13 @@ def _xdg_config_home() -> Path:
     if is_windows():
         return _windows_config_home()
     return Path.home() / ".config"
+
+
+def _memory_dir() -> Path:
+    explicit = os.environ.get("OM_MEMORY_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+    return _xdg_data_home() / "observational-memory"
 
 
 def _claude_user_dir() -> Path:
@@ -197,7 +205,8 @@ ENV_FILE_TEMPLATE = """\
 #
 # LLM provider selection (auto rule order: anthropic key, openai key,
 # openai-chatgpt subscription, xai-oauth subscription, xai api key):
-# OM_LLM_PROVIDER=auto  # auto|anthropic|openai|anthropic-vertex|anthropic-bedrock|openai-chatgpt|xai-oauth|xai
+# OM_LLM_PROVIDER=auto
+# Options: auto|anthropic|openai|anthropic-vertex|anthropic-bedrock|codex-cli|openai-chatgpt|xai-oauth|xai
 #
 # Shared/default model for observer + reflector:
 # OM_LLM_MODEL=claude-sonnet-4-5-20250929
@@ -249,6 +258,18 @@ ENV_FILE_TEMPLATE = """\
 # OM_OPENAI_CHATGPT_REASONING_EFFORT=
 # OM_OPENAI_CHATGPT_OBSERVER_REASONING_EFFORT=low
 # OM_OPENAI_CHATGPT_REFLECTOR_REASONING_EFFORT=
+#
+# Local Codex CLI provider (uses the existing `codex login` session):
+# OM_CODEX_CLI_COMMAND=codex
+# OM_CODEX_CLI_MODEL=gpt-5.3-codex-spark
+# OM_CODEX_CLI_REASONING_EFFORT=low
+# OM_CODEX_CLI_TIMEOUT_SECONDS=300
+#
+# Memory output directory:
+# OM_MEMORY_DIR=                 # default: <XDG_DATA_HOME>/observational-memory
+#
+# Automatic reflection catch-up after an observation:
+# OM_REFLECTOR_CATCHUP_ENABLED=1
 #
 # Direct provider keys (legacy/default flow):
 # ANTHROPIC_API_KEY=sk-ant-...
@@ -351,7 +372,7 @@ class Config:
     REFLECT_SCHTASKS_NAME = REFLECT_LAUNCHD_LABEL
 
     # Memory storage
-    memory_dir: Path = field(default_factory=lambda: _xdg_data_home() / "observational-memory")
+    memory_dir: Path = field(default_factory=_memory_dir)
 
     # Env file for API keys
     env_file: Path = field(default_factory=lambda: _xdg_config_home() / "observational-memory" / "env")
@@ -372,7 +393,7 @@ class Config:
     # LLM settings
     llm_provider: str = field(
         default_factory=lambda: os.environ.get("OM_LLM_PROVIDER", "auto")
-    )  # auto|anthropic|openai|anthropic-vertex|anthropic-bedrock|openai-chatgpt|xai-oauth|xai
+    )  # auto|anthropic|openai|anthropic-vertex|anthropic-bedrock|codex-cli|openai-chatgpt|xai-oauth|xai
     llm_model: str | None = field(default_factory=lambda: os.environ.get("OM_LLM_MODEL"))
     llm_observer_model: str | None = field(default_factory=lambda: os.environ.get("OM_LLM_OBSERVER_MODEL"))
     llm_reflector_model: str | None = field(default_factory=lambda: os.environ.get("OM_LLM_REFLECTOR_MODEL"))
@@ -387,6 +408,14 @@ class Config:
         default_factory=lambda: os.environ.get("OM_ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
     )
     openai_model: str = field(default_factory=lambda: os.environ.get("OM_OPENAI_MODEL", "gpt-4o-mini"))
+    codex_cli_command: str = field(default_factory=lambda: os.environ.get("OM_CODEX_CLI_COMMAND", "codex"))
+    codex_cli_model: str = field(default_factory=lambda: os.environ.get("OM_CODEX_CLI_MODEL", "gpt-5.3-codex-spark"))
+    codex_cli_reasoning_effort: str = field(
+        default_factory=lambda: os.environ.get("OM_CODEX_CLI_REASONING_EFFORT", "low")
+    )
+    codex_cli_timeout_seconds: float = field(
+        default_factory=lambda: _safe_positive_float(os.environ.get("OM_CODEX_CLI_TIMEOUT_SECONDS"), 300.0)
+    )
     # The ChatGPT-account Codex allow-list shifts over time (gpt-5-codex was
     # rejected with HTTP 400 on 2026-05-23; the live /models endpoint listed
     # gpt-5.5 / gpt-5.4 / gpt-5.3-codex). gpt-5.5 is the current flagship;
@@ -431,6 +460,7 @@ class Config:
     observer_context_max_chars: int = field(
         default_factory=lambda: int(os.environ.get("OM_OBSERVER_CONTEXT_MAX_CHARS", "12000"))
     )
+    reflector_catchup_enabled: bool = field(default_factory=lambda: _env_flag("OM_REFLECTOR_CATCHUP_ENABLED", True))
     # Cap on how much of the existing reflections.md is re-sent to the reflector
     # as "current reflections" context. The chunked reflector folds each chunk
     # into a running document and re-sends it every fold; without a bound that is
@@ -822,6 +852,7 @@ class Config:
             "openai",
             "anthropic-vertex",
             "anthropic-bedrock",
+            "codex-cli",
             "openai-chatgpt",
             "xai-oauth",
             "xai",
@@ -919,6 +950,8 @@ class Config:
         active_provider = provider or self.resolve_provider()
         if active_provider == "openai":
             return self.openai_model
+        if active_provider == "codex-cli":
+            return self.codex_cli_model
         if active_provider == "openai-chatgpt":
             return self.openai_chatgpt_model
         if active_provider == "xai-oauth":
@@ -939,6 +972,11 @@ class Config:
         elif active_provider == "openai":
             if not os.environ.get("OPENAI_API_KEY"):
                 raise RuntimeError("Provider 'openai' requires OPENAI_API_KEY.")
+        elif active_provider == "codex-cli":
+            if not shutil.which(self.codex_cli_command):
+                raise RuntimeError(
+                    f"Provider 'codex-cli' requires the Codex CLI command {self.codex_cli_command!r} on PATH."
+                )
         elif active_provider == "anthropic-vertex":
             missing = []
             if not self.vertex_project_id:

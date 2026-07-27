@@ -110,6 +110,9 @@ om context --for codex --cwd "$PWD" --task "finish docs"
 | macOS / Linux | `~/.local/share/observational-memory/` | `~/.config/observational-memory/` |
 | Windows | `%LOCALAPPDATA%\observational-memory\` | `%APPDATA%\observational-memory\` |
 
+Set `OM_MEMORY_DIR` to keep the Markdown files somewhere else, such as an
+Obsidian vault.
+
 ## Common Commands
 
 ```bash
