@@ -111,7 +111,9 @@ om context --for codex --cwd "$PWD" --task "finish docs"
 | Windows | `%LOCALAPPDATA%\observational-memory\` | `%APPDATA%\observational-memory\` |
 
 Set `OM_MEMORY_DIR` to keep the Markdown files somewhere else, such as an
-Obsidian vault.
+Obsidian vault. Set `OM_OBSERVATION_DAILY_DIR` to store observations as
+`YYYY-MM-DD.md` files plus an `INDEX.md`; internal consumers use a hidden
+materialized aggregate.
 
 ## Common Commands
 

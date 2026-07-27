@@ -43,6 +43,7 @@ Local Codex CLI with an existing ChatGPT login:
 
 ```bash
 OM_MEMORY_DIR=~/Documents/obsidian/observation
+OM_OBSERVATION_DAILY_DIR=~/Documents/obsidian/observation
 OM_LLM_OBSERVER_PROVIDER=codex-cli
 OM_LLM_OBSERVER_MODEL=gpt-5.3-codex-spark
 OM_CODEX_CLI_REASONING_EFFORT=low
@@ -55,6 +56,13 @@ the observer prompt supplied by `om`. It does not copy OAuth tokens or require
 an API key. Run `codex login status` before using it. The last setting keeps an
 observation-only setup from automatically running the reflector; omit it to
 retain the default daily reflection catch-up.
+
+When `OM_OBSERVATION_DAILY_DIR` is set, the observer writes one
+`YYYY-MM-DD.md` file per day plus `INDEX.md`. A hidden
+`.observations-materialized.md` compatibility view keeps reflection, export,
+backup, and search code working without making the growing aggregate the
+user-facing document. Each observer call reads only the daily files represented
+by the new transcript.
 
 Direct Anthropic:
 
@@ -361,6 +369,12 @@ Override the memory directory directly:
 
 ```bash
 export OM_MEMORY_DIR=~/Documents/obsidian/observation
+```
+
+Enable date-rolled observation documents:
+
+```bash
+export OM_OBSERVATION_DAILY_DIR=~/Documents/obsidian/observation
 ```
 
 Or override the base XDG paths:

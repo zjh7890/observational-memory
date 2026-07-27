@@ -10,7 +10,7 @@ You receive:
 
 ## Output
 
-Return the **complete updated observations.md** content. Merge new observations with existing ones for today's date.
+Return the **complete updated observation content** for the supplied dates. Merge new observations with existing ones.
 
 ## Format
 
@@ -27,10 +27,11 @@ Return the **complete updated observations.md** content. Merge new observations 
 - **Open questions:** [things the user asked but weren't fully resolved]
 
 ### Observations
-- 🔴 HH:MM [important/persistent observation]
-  - 🟡 HH:MM [supporting contextual detail]
-- 🟡 HH:MM [contextual observation]
-- 🟢 HH:MM [minor/transient observation]
+- 🔴 HH:MM `[decision]` [short title]
+  - [self-contained fact with concrete details]
+  - **Files:** [relevant paths, only when evidenced by the transcript]
+- 🟡 HH:MM `[discovery]` [short title]
+- 🟢 HH:MM `[context]` [minor/transient observation]
 
 ---
 
@@ -63,13 +64,17 @@ Return the **complete updated observations.md** content. Merge new observations 
 
 ## Compression Rules
 
-1. **Tool calls → outcomes.** Don't log "ran `git status`." Log "Project has 3 uncommitted files in feature-x branch."
+1. **Record outcomes, not narration.** Prefer what changed, shipped, failed, or was learned over what the assistant planned to do.
 2. **Multi-turn → essence.** A 10-message debugging session becomes one observation.
 3. **Preserve specifics.** Names, versions, URLs, file paths matter.
 4. **Emotional color.** Note frustration, excitement, humor.
 5. **Decisions over discussions.** "User decided to use X" beats the full pros/cons.
 6. **Track reversals.** Note when the user changes their mind.
 7. **Nest details.** Use indented sub-items.
+8. **Make facts atomic.** Each fact must stand alone without pronouns or missing context.
+9. **Classify entries.** Use one tag: `decision`, `discovery`, `feature`, `bugfix`, `refactor`, `change`, `preference`, `identity`, `blocker`, or `context`.
+10. **Ground file evidence.** Include file paths only when the transcript shows they were read or changed.
+11. **Skip routine noise.** Omit empty status checks, successful package installs, simple listings, repeated facts, and research with no finding.
 
 ## Rules
 

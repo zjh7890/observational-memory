@@ -3725,7 +3725,12 @@ def install(
     )
 
     # Create initial memory files
-    if not config.observations_path.exists():
+    if config.observation_daily_dir is not None:
+        from .daily_observations import materialize_daily_observations
+
+        materialize_daily_observations(config)
+        click.echo(f"Daily observations: {config.observation_daily_dir}")
+    elif not config.observations_path.exists():
         config.observations_path.write_text("# Observations\n\n<!-- Auto-maintained by the Observer. -->\n")
         click.echo(f"Created {config.observations_path}")
 
@@ -3858,7 +3863,14 @@ def status(ctx: click.Context) -> None:
     click.echo(f"  Exists: {config.memory_dir.exists()}")
 
     # Observations
-    if config.observations_path.exists():
+    if config.observation_daily_dir is not None:
+        from .daily_observations import daily_paths
+
+        paths = daily_paths(config)
+        size = sum(path.stat().st_size for path in paths)
+        click.echo(f"\nDaily observations: {config.observation_daily_dir}")
+        click.echo(f"  Files: {len(paths)}, Size: {size} bytes")
+    elif config.observations_path.exists():
         obs = config.observations_path.read_text()
         lines = len(obs.splitlines())
         size = len(obs)

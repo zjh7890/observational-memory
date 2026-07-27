@@ -267,6 +267,7 @@ ENV_FILE_TEMPLATE = """\
 #
 # Memory output directory:
 # OM_MEMORY_DIR=                 # default: <XDG_DATA_HOME>/observational-memory
+# OM_OBSERVATION_DAILY_DIR=      # optional: write YYYY-MM-DD.md files here
 #
 # Automatic reflection catch-up after an observation:
 # OM_REFLECTOR_CATCHUP_ENABLED=1
@@ -373,6 +374,11 @@ class Config:
 
     # Memory storage
     memory_dir: Path = field(default_factory=_memory_dir)
+    observation_daily_dir: Path | None = field(
+        default_factory=lambda: (
+            Path(value).expanduser() if (value := os.environ.get("OM_OBSERVATION_DAILY_DIR", "").strip()) else None
+        )
+    )
 
     # Env file for API keys
     env_file: Path = field(default_factory=lambda: _xdg_config_home() / "observational-memory" / "env")
@@ -598,6 +604,8 @@ class Config:
 
     @property
     def observations_path(self) -> Path:
+        if self.observation_daily_dir is not None:
+            return self.memory_dir / ".observations-materialized.md"
         return self.memory_dir / "observations.md"
 
     @property

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Config
+from .daily_observations import daily_enabled, read_daily_observations, write_daily_observations
 from .llm import compress
 from .transcripts import Message
 
@@ -67,8 +69,18 @@ def run_observer(
     # append-only record log — older observations live in older records and are
     # never lost. So we only bound the dedup context in the append-only path.
     cluster_mode = _cluster_enabled(config)
+    if cluster_mode and daily_enabled(config):
+        raise RuntimeError("OM_OBSERVATION_DAILY_DIR is not supported together with OM Cluster.")
+
     existing_observations = ""
-    if config.observations_path.exists():
+    if daily_enabled(config):
+        existing_observations = read_daily_observations(config, dates=_message_dates(messages))
+        system_prompt += (
+            "\n\n## Daily file mode\n\n"
+            "Return the complete updated `## YYYY-MM-DD` section for every date represented "
+            "in the new transcript. Do not repeat other dates."
+        )
+    elif config.observations_path.exists():
         existing_observations = config.observations_path.read_text()
         if cluster_mode:
             existing_observations = _recent_observations_window(existing_observations, config)
@@ -556,7 +568,9 @@ def _append_observations(new_observations: str, config: Config, *, skip_reindex:
     from .sync.atomic import atomic_write_text
 
     config.ensure_memory_dir()
-    if config.observations_path.exists():
+    if daily_enabled(config):
+        write_daily_observations(config, new_observations, append=True)
+    elif config.observations_path.exists():
         existing = config.observations_path.read_text()
         atomic_write_text(config.observations_path, existing.rstrip() + "\n\n" + new_observations.rstrip() + "\n")
     else:
@@ -587,6 +601,17 @@ def _format_messages(messages: list[Message]) -> str:
         source_tag = f"[{msg.source}]" if msg.source else ""
         lines.append(f"[{ts}] {prefix} {source_tag}: {msg.content}")
     return "\n\n".join(lines)
+
+
+def _message_dates(messages: list[Message]) -> set[str]:
+    dates = {
+        match.group(0)
+        for message in messages
+        if message.timestamp
+        for match in [re.match(r"\d{4}-\d{2}-\d{2}", message.timestamp)]
+        if match
+    }
+    return dates or {datetime.now(timezone.utc).strftime("%Y-%m-%d")}
 
 
 def _reindex_if_enabled(config: Config) -> None:
@@ -669,6 +694,12 @@ def _write_observations(new_observations: str, config: Config) -> None:
     from .sync.atomic import atomic_write_text
 
     config.ensure_memory_dir()
+
+    if daily_enabled(config):
+        write_daily_observations(config, new_observations)
+        refresh_startup_memory(config)
+        _reindex_if_enabled(config)
+        return
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
